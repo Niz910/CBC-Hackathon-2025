@@ -1,4 +1,4 @@
-print("🚀 脚本文件被成功执行")
+print("🚀 Script successfully executed")
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -8,12 +8,14 @@ def transcribe_audio(
     output_path="transcript/transcript.txt"
 ):
     """
-    从 audio/ 文件夹读取音频文件，调用 OpenAI API 转录并写入 transcript/transcript.txt
+    Read audio files from the 'audio/' folder, 
+    transcribe them using the OpenAI API, 
+    and write the results to 'transcript/transcript.txt'.
     """
     load_dotenv()
     client = OpenAI()
 
-    # 确保输出目录存在
+    # Ensure the output directory exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     for filename in os.listdir(input_dir):
@@ -21,7 +23,7 @@ def transcribe_audio(
             continue
 
         file_path = os.path.join(input_dir, filename)
-        print(f"🎧 正在转录: {filename} ...")
+        print(f"🎧 Transcribing: {filename} ...")
 
         with open(file_path, "rb") as f:
             result = client.audio.transcriptions.create(
@@ -33,7 +35,7 @@ def transcribe_audio(
             out.write(f"### {filename}\n")
             out.write(result.text + "\n\n")
 
-        print(f"✅ {filename} 转录完成，已写入 {output_path}")
+        print(f"✅ {filename} transcription completed and saved to {output_path}")
 
 if __name__ == "__main__":
     transcribe_audio()
