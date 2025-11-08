@@ -1,0 +1,242 @@
+import os
+import sys
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import re
+import json
+
+# Add parent directory to path to import the existing modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from anthropic import Anthropic
+from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
+
+app = Flask(__name__)
+CORS(app)
+
+# Template for keyword extraction
+KEYWORD_EXTRACTION_TEMPLATE = """You are tasked with extracting biological terminology from a conference transcript. Your goal is to identify and catalog scientific terms specifically related to biology, genetics, molecular biology, and related fields.
+
+Here is the conference transcript to analyze:
+
+<transcript>
+{{TRANSCRIPT}}
+</transcript>
+
+## What Qualifies as a Biological Term
+
+Include terms that fall into these categories:
+- Gene names (e.g., p53, BRCA1, myc)
+- Protein names (e.g., hemoglobin, insulin, collagen)
+- Biological processes (e.g., transcription, translation, mitosis)
+- Cellular components (e.g., mitochondria, ribosome, nucleus)
+- Organisms and species names (e.g., E. coli, Drosophila, Homo sapiens)
+- Biological molecules (e.g., DNA, RNA, ATP)
+- Medical/biological conditions (e.g., diabetes, cancer, mutation)
+- Biological techniques and methods (e.g., PCR, CRISPR, sequencing)
+- Anatomical terms (e.g., liver, neuron, tissue)
+
+## What to Exclude
+
+Do not include:
+- General scientific terms that aren't specifically biological (like "data", "analysis", "significant")
+- Common words that aren't technical terminology
+- General laboratory equipment or basic scientific concepts
+
+## Extraction Requirements
+
+1. **Preserve exact formatting**: Capture each term exactly as it appears in the transcript - maintain original spelling, capitalization, and formatting
+2. **Include variants**: If both abbreviated forms (like "PCR") and full forms (like "polymerase chain reaction") appear, include both
+3. **Include all nomenclature**: Capture species names in both common and scientific formats
+4. **No duplicates**: List each unique term only once, even if it appears multiple times
+5. **Focus on technical terms**: Prioritize specialized biological terminology over general words
+
+## Analysis Process
+
+Before providing your final answer, work through the transcript systematically in <term_extraction> tags inside your thinking block:
+
+1. Scan through the entire transcript and quote all potential biological terms exactly as they appear in the text. It's OK for this section to be quite long.
+2. For each quoted term, evaluate whether it qualifies based on the criteria above, noting your reasoning for including or excluding each term
+3. Create a running list of accepted terms, preserving their exact formatting and capitalization
+4. Check for and eliminate any duplicates from your accepted terms list
+5. Verify that your final list is sorted alphabetically while maintaining exact formatting
+
+## Output Format
+
+Provide your final answer as a JSON object with this exact structure:
+
+```json
+{
+  "biological_terms": [
+    "first_term_exactly_as_appears",
+    "second_term_exactly_as_appears",
+    "third_term_exactly_as_appears"
+  ],
+  "total_count": number_of_unique_terms
+}
+```
+
+The biological_terms array should:
+- Be sorted alphabetically
+- Preserve exact capitalization, spelling, and formatting from the original transcript
+- Contain only unique terms
+
+Your final output should contain only the JSON object and should not duplicate or rehash any of the extraction work you did in the thinking block."""
+
+
+def transcribe_audio_files(input_dir, output_path):
+    """
+    Transcribe audio files from input_dir using OpenAI API
+    and write results to output_path.
+    """
+    client = OpenAI()
+
+    # Ensure the output directory exists
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    transcript_text = ""
+
+    for filename in os.listdir(input_dir):
+        if not filename.lower().endswith((".wav", ".mp3", ".m4a")):
+            continue
+
+        file_path = os.path.join(input_dir, filename)
+        print(f"🎧 Transcribing: {filename} ...")
+
+        with open(file_path, "rb") as f:
+            result = client.audio.transcriptions.create(
+                model="gpt-4o-mini-transcribe",
+                file=f
+            )
+
+        with open(output_path, "a") as out:
+            out.write(f"### {filename}\n")
+            out.write(result.text + "\n\n")
+
+        transcript_text += f"### {filename}\n{result.text}\n\n"
+        print(f"✅ {filename} transcription completed")
+
+    return transcript_text
+
+
+def extract_keywords(transcript):
+    """
+    Extract biological keywords from transcript using Anthropic API.
+    Returns dict with 'keyword' and 'total_count' fields.
+    """
+    client = Anthropic(
+        api_key=os.environ.get("ANTHROPIC_API_KEY")
+    )
+
+    message = client.messages.create(
+        model='claude-3-5-haiku-20241022',
+        max_tokens=1024,
+        temperature=0,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": KEYWORD_EXTRACTION_TEMPLATE.replace('{{TRANSCRIPT}}', transcript)
+                    }
+                ]
+            }
+        ]
+    )
+
+    match = re.search(r"```json\s*([\s\S]+?)\s*```", message.content[0].text)
+
+    if match:
+        json_string = match.group(1)
+
+        try:
+            data = json.loads(json_string)
+            # Transform to match expected output format
+            return {
+                "keyword": data.get("biological_terms", []),
+                "total_count": data.get("total_count", 0)
+            }
+
+        except json.JSONDecodeError as e:
+            return {"error": f"Error decoding JSON: {str(e)}"}, 500
+    else:
+        return {"error": "No JSON found in response"}, 500
+
+
+@app.route('/transcribe', methods=['POST'])
+def transcribe():
+    """
+    Endpoint to transcribe audio files.
+    Input: JSON with 'input_dir' and 'output_path'
+    Output: Transcript text
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+
+        input_dir = data.get('input_dir')
+        output_path = data.get('output_path')
+
+        if not input_dir or not output_path:
+            return jsonify({"error": "Both 'input_dir' and 'output_path' are required"}), 400
+
+        if not os.path.exists(input_dir):
+            return jsonify({"error": f"Input directory '{input_dir}' does not exist"}), 404
+
+        # Perform transcription
+        transcript = transcribe_audio_files(input_dir, output_path)
+
+        return jsonify({
+            "transcript": transcript,
+            "output_path": output_path
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/extract', methods=['POST'])
+def extract():
+    """
+    Endpoint to extract biological keywords from transcript.
+    Input: JSON with 'transcript' field
+    Output: JSON with 'keyword' (list of strings) and 'total_count' (integer)
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+
+        transcript = data.get('transcript')
+
+        if not transcript:
+            return jsonify({"error": "'transcript' field is required"}), 400
+
+        # Extract keywords
+        result = extract_keywords(transcript)
+
+        if isinstance(result, tuple):
+            # Error case
+            return jsonify(result[0]), result[1]
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    return jsonify({"status": "healthy"}), 200
+
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5001)

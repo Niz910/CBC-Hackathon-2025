@@ -1,4 +1,5 @@
 audio-to-transcript/.env
+flask/.env
 transcript-to-keyword/.env
 transcript-to-keyword/keyword
 .DS_Store
