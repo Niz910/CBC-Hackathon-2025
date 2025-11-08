@@ -14,9 +14,12 @@ def main(transcript):
     )
 
     message = client.messages.create(
-        model="claude-sonnet-4-5-20250929",
-        max_tokens=20000,
-        temperature=1,
+        model='claude-3-5-haiku-20241022',
+        # model="claude-haiku-4-5-20251001",
+        # model="claude-sonnet-4-5-20250929",
+        max_tokens=1024,
+        # temperature=1,
+        temperature=0,
         messages=[
             {
                 "role": "user",
@@ -51,3 +54,5 @@ if __name__ == "__main__":
 
     d = main(TRANSCRIPT)
     print(d)
+
+    json.dump(d, open("keyword/test4.json", "w"))
