@@ -2,3 +2,4 @@ audio-to-transcript/.env
 transcript-to-keyword/.env
 transcript-to-keyword/keyword
 .DS_Store
+Audio-Transcription-App/node_modules
