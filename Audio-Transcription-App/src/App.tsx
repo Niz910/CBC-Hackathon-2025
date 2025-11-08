@@ -11,7 +11,7 @@ import { Skeleton } from './components/ui/skeleton';
 import { Toaster } from './components/ui/sonner';
 import { ArrowLeft, FileAudio } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import { mockTranscribeAudio, mockExtractKeywords, mockFetchExplainer } from './lib/mockApi';
+import { transcribeAudio, extractKeywords, fetchExplainer } from './lib/api';
 
 type AppState = 'landing' | 'processing' | 'transcription' | 'extracting' | 'keywords';
 
@@ -36,7 +36,7 @@ interface Explainer {
 
 export default function App() {
   const [state, setState] = useState<AppState>('landing');
-  const [audioSource, setAudioSource] = useState<{ type: 'mic' | 'upload'; url: string; duration: number } | null>(null);
+  const [audioSource, setAudioSource] = useState<{ type: 'mic' | 'upload'; url: string; duration: number; filename?: string } | null>(null);
   const [transcriptBlocks, setTranscriptBlocks] = useState<TranscriptBlock[]>([]);
   const [originalBlocks, setOriginalBlocks] = useState<TranscriptBlock[]>([]);
   const [keywords, setKeywords] = useState<Keyword[]>([]);
@@ -47,42 +47,42 @@ export default function App() {
 
   // Handle recording complete
   const handleRecordingComplete = async (blobUrl: string, duration: number) => {
-    setAudioSource({ type: 'mic', url: blobUrl, duration });
+    setAudioSource({ type: 'mic', url: blobUrl, duration, filename: 'recording.webm' });
     setState('processing');
-    await processAudio();
+    await processAudio(blobUrl, 'recording.webm');
   };
 
   // Handle file upload
   const handleFileSelected = async (file: File, blobUrl: string) => {
     const audio = new Audio(blobUrl);
     audio.addEventListener('loadedmetadata', async () => {
-      setAudioSource({ type: 'upload', url: blobUrl, duration: audio.duration });
+      setAudioSource({ type: 'upload', url: blobUrl, duration: audio.duration, filename: file.name });
       setState('processing');
-      await processAudio();
+      await processAudio(blobUrl, file.name);
     });
   };
 
   // Process audio and transcribe
-  const processAudio = async () => {
+  const processAudio = async (blobUrl: string, filename: string) => {
     setProgress(0);
     const progressInterval = setInterval(() => {
       setProgress(prev => Math.min(prev + 10, 90));
     }, 200);
 
     try {
-      const blocks = await mockTranscribeAudio(audioSource?.url || '');
+      const blocks = await transcribeAudio(blobUrl, filename);
       setTranscriptBlocks(blocks);
       setOriginalBlocks(JSON.parse(JSON.stringify(blocks)));
       setProgress(100);
       clearInterval(progressInterval);
-      
+
       setTimeout(() => {
         setState('transcription');
         toast.success('Transcription complete');
       }, 500);
     } catch (error) {
       clearInterval(progressInterval);
-      toast.error('Transcription failed');
+      toast.error('Transcription failed. Make sure Flask backend is running.');
       setState('landing');
     }
   };
@@ -119,7 +119,7 @@ export default function App() {
 
     try {
       const fullText = transcriptBlocks.map(b => b.text).join(' ');
-      const extractedKeywords = await mockExtractKeywords(fullText);
+      const extractedKeywords = await extractKeywords(fullText);
       setKeywords(extractedKeywords);
       setProgress(100);
       clearInterval(progressInterval);
@@ -134,7 +134,7 @@ export default function App() {
       }, 500);
     } catch (error) {
       clearInterval(progressInterval);
-      toast.error('Keyword extraction failed');
+      toast.error('Keyword extraction failed. Make sure Flask backend is running.');
       setState('transcription');
     }
   };
@@ -152,7 +152,7 @@ export default function App() {
     setIsLoadingExplainer(true);
 
     try {
-      const explanation = await mockFetchExplainer(term);
+      const explanation = await fetchExplainer(term);
       setExplainer(explanation);
     } catch (error) {
       toast.error('Failed to fetch explanation');

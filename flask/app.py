@@ -2,8 +2,10 @@ import os
 import sys
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
 import re
 import json
+from datetime import datetime
 
 # Add parent directory to path to import the existing modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,6 +18,18 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+# Configuration for file uploads
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audio')
+ALLOWED_EXTENSIONS = {'wav', 'mp3', 'm4a', 'webm'}
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
+
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Template for keyword extraction
 KEYWORD_EXTRACTION_TEMPLATE = """You are tasked with extracting biological terminology from a conference transcript. Your goal is to identify and catalog scientific terms specifically related to biology, genetics, molecular biology, and related fields.
@@ -232,6 +246,101 @@ def extract():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/upload', methods=['POST'])
+def upload_audio():
+    """
+    Endpoint to upload audio files and save them to the audio directory.
+    Input: multipart/form-data with 'audio' file
+    Output: JSON with saved file path and filename
+    """
+    try:
+        # Check if audio file is in request
+        if 'audio' not in request.files:
+            return jsonify({"error": "No audio file provided"}), 400
+
+        file = request.files['audio']
+
+        # Check if file was selected
+        if file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
+
+        # Check if file type is allowed
+        if not allowed_file(file.filename):
+            return jsonify({"error": f"File type not allowed. Supported: {', '.join(ALLOWED_EXTENSIONS)}"}), 400
+
+        # Generate unique filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        original_filename = secure_filename(file.filename)
+        name, ext = os.path.splitext(original_filename)
+        filename = f"{name}_{timestamp}{ext}"
+
+        # Save file to audio directory
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        return jsonify({
+            "message": "File uploaded successfully",
+            "filename": filename,
+            "filepath": filepath,
+            "size": os.path.getsize(filepath)
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/transcribe-upload', methods=['POST'])
+def transcribe_upload():
+    """
+    Endpoint to upload and transcribe a single audio file.
+    Input: multipart/form-data with 'audio' file
+    Output: JSON with transcript text
+    """
+    try:
+        # Check if audio file is in request
+        if 'audio' not in request.files:
+            return jsonify({"error": "No audio file provided"}), 400
+
+        file = request.files['audio']
+
+        # Check if file was selected
+        if file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
+
+        # Check if file type is allowed
+        if not allowed_file(file.filename):
+            return jsonify({"error": f"File type not allowed. Supported: {', '.join(ALLOWED_EXTENSIONS)}"}), 400
+
+        # Generate unique filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        original_filename = secure_filename(file.filename)
+        name, ext = os.path.splitext(original_filename)
+        filename = f"{name}_{timestamp}{ext}"
+
+        # Save file to audio directory
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # Transcribe the saved file
+        client = OpenAI()
+
+        with open(filepath, "rb") as f:
+            result = client.audio.transcriptions.create(
+                model="gpt-4o-mini-transcribe",
+                file=f,
+                language="en"
+            )
+
+        return jsonify({
+            "transcript": result.text,
+            "filename": filename,
+            "filepath": filepath
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
@@ -239,4 +348,6 @@ def health():
 
 
 if __name__ == '__main__':
+    # Ensure upload folder exists
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     app.run(debug=True, host='0.0.0.0', port=5001)
