@@ -1,2 +1,3 @@
 audio-to-transcript/.env
+transcript-to-keyword/.env
 .DS_Store
