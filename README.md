@@ -1,3 +1,8 @@
+# Slide link
+https://docs.google.com/presentation/d/1OqkxIs_gCsTLb2UK-plFexVS91qfgxqF/edit?usp=sharing&ouid=117914992394790894094&rtpof=true&sd=true
+
+
+
 # CBC-Hackathon-2025
 An advanced program can provide explanations for unfamiliar terms encountered in the biological field. It accepts text, image, and voice input.
 
