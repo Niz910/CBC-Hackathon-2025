@@ -204,6 +204,31 @@ def extract_keywords(transcript):
         return {"error": "No JSON found in response"}, 500
 
 
+def explain_terms(terms):
+    template = "You will be explaining a biological term in a clear, concise manner. Here is the term you need to explain:\n\n<biological_term>\n{{BIOLOGICAL_TERM}}\n</biological_term>\n\nYour task is to provide a brief explanation of this biological term that would be understandable to someone with a basic high school level understanding of biology. Your explanation should:\n\n- Be 2-4 sentences long\n- Define what the term means in clear, simple language\n- Include the key function or significance of the concept when relevant\n- Avoid unnecessary jargon, but include essential scientific terminology when needed\n- Be accurate and scientifically sound\n\nIf the term has multiple meanings or applications in biology, focus on the most common or fundamental definition.\n\nWrite your explanation inside <explanation> tags."
+    
+    dic = {}
+    for term in terms:
+        message = client.messages.create(
+            model="claude-sonnet-4-5-20250929",
+            max_tokens=1024,
+            temperature=0,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": template.replace('{{BIOLOGICAL_TERM}}', term)
+                        }
+                    ]
+                }
+            ]
+        )
+        dic[term] = re.search(r"<explanation>(.*?)</explanation>", message.content[0].text, re.DOTALL).group(1).strip()
+    return dic
+
+
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
     """
