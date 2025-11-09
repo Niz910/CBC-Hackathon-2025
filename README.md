@@ -151,3 +151,20 @@ Example curl for `/extract`:
 curl -X POST http://localhost:5001/extract \
   -H "Content-Type: application/json" \
   -d '{"transcript": "In CRISPR gene editing, Cas9 introduces double-strand breaks..."}'
+
+
+conda env create -f environment.yml
+
+cd Audio-Transcription-App
+npm run dev # in Audio-Transcription-App
+
+python flask/app.py
+
+curl -X POST http://localhost:5001/extract \
+    -H "Content-Type: application/json" \
+    -d '{"transcript": "In type 1 diabetes, the marker gene INS is significantly reduced in pancreatic beta cells."}'
+
+curl -X POST http://localhost:5001/transcribe \
+    -H "Content-Type: application/json" \
+    -d '{"input_dir": "../audio-to-transcript/audio", "output_path":
+  "output/transcript.txt"}'
