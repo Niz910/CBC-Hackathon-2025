@@ -136,15 +136,39 @@ def transcribe_audio_files(input_dir, output_path):
     return transcript_text
 
 
+client = Anthropic(
+    api_key=os.environ.get("ANTHROPIC_API_KEY")
+)
+
+
+def filter(transcript):
+    template = "You will be cleaning and formatting a transcript about technical topics. Here is the transcript to process:\n\n<transcript>\n{{TRANSCRIPT}}\n</transcript>\n\nYour task is to clean and format this transcript by applying the following filters and improvements:\n\n**Content Cleaning Rules:**\n- Remove all filler words such as \"um,\" \"uh,\" \"like,\" \"you know,\" \"so,\" \"well,\" \"actually,\" and similar verbal hesitations\n- Fix grammatical errors and improve sentence structure for clarity\n- Correct run-on sentences by breaking them into shorter, more readable sentences\n- Fix subject-verb agreement and other grammatical issues\n\n**Technical Accuracy Requirements:**\n- Keep all technical terms, jargon, and specialized vocabulary exactly as intended\n- Preserve the meaning and technical accuracy of all statements\n- Do not change or simplify technical concepts\n\n**Formatting and Structure:**\n- Maintain any existing structural elements (numbered lists, sections, etc.)\n- Preserve the logical flow and organization of ideas\n- Standardize capitalization - avoid ALL CAPS for emphasis unless it's a technical acronym or absolutely necessary\n- Ensure consistent punctuation and formatting\n\n**Readability Improvements:**\n- Improve sentence flow and transitions between ideas\n- Ensure paragraphs are well-structured and coherent\n- Make the text more professional and polished while keeping the original meaning intact\n\n**Output Requirements:**\n- Present the cleaned transcript in a clear, professional format\n- Maintain the same overall structure and organization as the original\n- Ensure the final result reads smoothly while preserving all important information\n\nProvide your cleaned and formatted transcript inside <cleaned_transcript> tags."
+    message = client.messages.create(
+        model="claude-sonnet-4-5-20250929",
+        max_tokens=20000,
+        temperature=0,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": template.replace("{{TRANSCRIPT}}", transcript)
+                    }
+                ]
+            }
+        ]
+    )
+    clean_transcript = re.search(r"<cleaned_transcript>(.*?)</cleaned_transcript>", message.content[0].text, re.DOTALL).group(1).strip()
+    return clean_transcript
+
+
 def extract_keywords(transcript):
     """
     Extract biological keywords from transcript using Anthropic API.
     Returns dict with 'keyword' and 'total_count' fields.
     """
-    client = Anthropic(
-        api_key=os.environ.get("ANTHROPIC_API_KEY")
-    )
-
+    transcript = filter(transcript)
     message = client.messages.create(
         model='claude-3-5-haiku-20241022',
         max_tokens=1024,
