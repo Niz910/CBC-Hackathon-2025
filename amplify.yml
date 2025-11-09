@@ -1,0 +1,17 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - cd Audio-Transcription-App
+        - npm ci
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: Audio-Transcription-App/build
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - Audio-Transcription-App/node_modules/**/*
