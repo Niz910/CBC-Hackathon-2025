@@ -396,6 +396,12 @@ class HealthResponse(BaseModel):
     message: str
     uptime_seconds: Optional[float] = None
 
+@app.route('/', methods=['GET'])
+def root():
+    """Root endpoint for AWS target group health check"""
+    return jsonify({"status": "healthy", "service": "audio-transcription-api"}), 200
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
