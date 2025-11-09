@@ -396,13 +396,10 @@ class HealthResponse(BaseModel):
     message: str
     uptime_seconds: Optional[float] = None
 
-@app.get("/health", response_model=HealthResponse)
+@app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
-    return HealthResponse(
-        status="healthy",
-        message="Server is running and ready to accept requests"
-    )
+    return jsonify({"status": "healthy"}), 200
 
 
 if __name__ == '__main__':
