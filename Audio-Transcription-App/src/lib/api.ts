@@ -1,6 +1,6 @@
 // Real API functions for backend communication
 
-const API_BASE_URL = 'http://CBC-Hackathon-2025-1812186451.us-east-1.elb.amazonaws.com';
+const API_BASE_URL = 'https://CBC-Hackathon-2025-1812186451.us-east-1.elb.amazonaws.com';
 
 interface TranscriptBlock {
   id: string;
