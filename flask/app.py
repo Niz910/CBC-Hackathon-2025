@@ -6,6 +6,8 @@ from werkzeug.utils import secure_filename
 import re
 import json
 from datetime import datetime
+from pydantic import BaseModel
+from typing import Optional
 
 # Add parent directory to path to import the existing modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -389,10 +391,18 @@ def transcribe_upload():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/health', methods=['GET'])
+class HealthResponse(BaseModel):
+    status: str
+    message: str
+    uptime_seconds: Optional[float] = None
+
+@app.get("/health", response_model=HealthResponse)
 def health():
     """Health check endpoint"""
-    return jsonify({"status": "healthy"}), 200
+    return HealthResponse(
+        status="healthy",
+        message="Server is running and ready to accept requests"
+    )
 
 
 if __name__ == '__main__':
