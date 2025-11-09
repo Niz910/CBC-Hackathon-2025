@@ -31,6 +31,10 @@ def allowed_file(filename):
     """Check if file extension is allowed"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+client = Anthropic(
+    api_key=os.environ.get("ANTHROPIC_API_KEY")
+)
+
 # Template for keyword extraction
 KEYWORD_EXTRACTION_TEMPLATE = """You are tasked with extracting biological terminology from a conference transcript. Your goal is to identify and catalog scientific terms specifically related to biology, genetics, molecular biology, and related fields.
 
@@ -126,19 +130,15 @@ def transcribe_audio_files(input_dir, output_path):
                 file=f
             )
 
+        filtered_text = filter(result.text)
         with open(output_path, "a") as out:
             out.write(f"### {filename}\n")
-            out.write(result.text + "\n\n")
+            out.write(filtered_text + "\n\n")
 
-        transcript_text += f"### {filename}\n{result.text}\n\n"
+        transcript_text += f"### {filename}\n{filtered_text}\n\n"
         print(f"✅ {filename} transcription completed")
 
     return transcript_text
-
-
-client = Anthropic(
-    api_key=os.environ.get("ANTHROPIC_API_KEY")
-)
 
 
 def filter(transcript):
@@ -168,7 +168,6 @@ def extract_keywords(transcript):
     Extract biological keywords from transcript using Anthropic API.
     Returns dict with 'keyword' and 'total_count' fields.
     """
-    transcript = filter(transcript)
     message = client.messages.create(
         model='claude-3-5-haiku-20241022',
         max_tokens=1024,
