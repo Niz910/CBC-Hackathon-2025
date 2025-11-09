@@ -5,7 +5,8 @@ https://clarifyai.org
 # Slide link
 https://docs.google.com/presentation/d/1OqkxIs_gCsTLb2UK-plFexVS91qfgxqF/edit?usp=sharing&ouid=117914992394790894094&rtpof=true&sd=true
 
-
+# Problem statement link
+https://docs.google.com/document/d/1_gjvsbZtJV8UomG8_b_Mcuz_J2xPE-08/edit?usp=sharing&ouid=117914992394790894094&rtpof=true&sd=true
 
 # Clarify AI — The Academic Comprehension Companion
 
