@@ -163,6 +163,45 @@ def filter(transcript):
     return clean_transcript
 
 
+# def extract_keywords(transcript):
+#     """
+#     Extract biological keywords from transcript using Anthropic API.
+#     Returns dict with 'keyword' and 'total_count' fields.
+#     """
+#     message = client.messages.create(
+#         model='claude-3-5-haiku-20241022',
+#         max_tokens=1024,
+#         temperature=0,
+#         messages=[
+#             {
+#                 "role": "user",
+#                 "content": [
+#                     {
+#                         "type": "text",
+#                         "text": KEYWORD_EXTRACTION_TEMPLATE.replace('{{TRANSCRIPT}}', transcript)
+#                     }
+#                 ]
+#             }
+#         ]
+#     )
+
+#     match = re.search(r"```json\s*([\s\S]+?)\s*```", message.content[0].text)
+
+#     if match:
+#         json_string = match.group(1)
+
+#         try:
+#             data = json.loads(json_string)
+#             # Transform to match expected output format
+#             return {
+#                 "keyword": data.get("biological_terms", []),
+#                 "total_count": data.get("total_count", 0)
+#             }
+
+#         except json.JSONDecodeError as e:
+#             return {"error": f"Error decoding JSON: {str(e)}"}, 500
+#     else:
+#         return {"error": "No JSON found in response"}, 500
 def extract_keywords(transcript):
     """
     Extract biological keywords from transcript using Anthropic API.
@@ -192,9 +231,13 @@ def extract_keywords(transcript):
 
         try:
             data = json.loads(json_string)
+            data['biological_terms2'] = []
+            for term in data['biological_terms']:
+                term2 = f'**{term}**: {explain_terms([term])[term]}'
+                data['biological_terms2'].append(term2)
             # Transform to match expected output format
             return {
-                "keyword": data.get("biological_terms", []),
+                "keyword": data.get("biological_terms2", []),
                 "total_count": data.get("total_count", 0)
             }
 
@@ -205,7 +248,7 @@ def extract_keywords(transcript):
 
 
 def explain_terms(terms):
-    template = "You will be explaining a biological term in a clear, concise manner. Here is the term you need to explain:\n\n<biological_term>\n{{BIOLOGICAL_TERM}}\n</biological_term>\n\nYour task is to provide a brief explanation of this biological term that would be understandable to someone with a basic high school level understanding of biology. Your explanation should:\n\n- Be 2-4 sentences long\n- Define what the term means in clear, simple language\n- Include the key function or significance of the concept when relevant\n- Avoid unnecessary jargon, but include essential scientific terminology when needed\n- Be accurate and scientifically sound\n\nIf the term has multiple meanings or applications in biology, focus on the most common or fundamental definition.\n\nWrite your explanation inside <explanation> tags."
+    template = "You will be explaining a biological term in a clear, concise manner. Here is the term you need to explain:\n\n<biological_term>\n{{BIOLOGICAL_TERM}}\n</biological_term>\n\nYour task is to provide a brief explanation of this biological term that would be understandable to someone with a basic high school level understanding of biology. Your explanation should:\n\n- Be one sentence long\n- Define what the term means in clear, simple language\n- Include the key function or significance of the concept when relevant\n- Avoid unnecessary jargon, but include essential scientific terminology when needed\n- Be accurate and scientifically sound\n\nIf the term has multiple meanings or applications in biology, focus on the most common or fundamental definition.\n\nWrite your explanation inside <explanation> tags."
     
     dic = {}
     for term in terms:
@@ -340,53 +383,83 @@ def upload_audio():
 @app.route('/transcribe-upload', methods=['POST'])
 def transcribe_upload():
     """
-    Endpoint to upload and transcribe a single audio file.
-    Input: multipart/form-data with 'audio' file
-    Output: JSON with transcript text
+    Uploads and transcribes a single audio file (any format).
+    Frontend can send .webm, .mp4, .m4a, etc.
+    This endpoint will auto-convert to .wav before sending to OpenAI.
     """
+    import subprocess
+    import traceback
+
     try:
-        # Check if audio file is in request
+        print("🟡 [transcribe-upload] Incoming request")
+        print("📦 request.files:", list(request.files.keys()))
+
         if 'audio' not in request.files:
             return jsonify({"error": "No audio file provided"}), 400
 
         file = request.files['audio']
-
-        # Check if file was selected
         if file.filename == '':
             return jsonify({"error": "No file selected"}), 400
 
-        # Check if file type is allowed
-        if not allowed_file(file.filename):
-            return jsonify({"error": f"File type not allowed. Supported: {', '.join(ALLOWED_EXTENSIONS)}"}), 400
-
-        # Generate unique filename with timestamp
+        # Save uploaded file
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         original_filename = secure_filename(file.filename)
         name, ext = os.path.splitext(original_filename)
         filename = f"{name}_{timestamp}{ext}"
-
-        # Save file to audio directory
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
         file.save(filepath)
+        print(f"✅ Saved file: {filepath} ({os.path.getsize(filepath)} bytes)")
 
-        # Transcribe the saved file
-        client = OpenAI()
+        # --- Convert to .wav for OpenAI ---
+        converted_path = os.path.splitext(filepath)[0] + ".wav"
+        print(f"🔄 Converting to WAV: {converted_path}")
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", filepath,
+                    "-ar", "44100", "-ac", "2", "-c:a", "pcm_s16le",
+                    converted_path
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            print(f"✅ Conversion successful: {converted_path}")
+        except subprocess.CalledProcessError as e:
+            print("❌ ffmpeg conversion failed:")
+            print(e.stderr.decode())
+            return jsonify({"error": "ffmpeg conversion failed"}), 500
 
-        with open(filepath, "rb") as f:
+        # --- Call OpenAI transcription API ---
+        from openai import OpenAI
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            return jsonify({"error": "Missing OPENAI_API_KEY"}), 500
+
+        client = OpenAI(api_key=api_key)
+        print(f"🎧 Transcribing {converted_path} ...")
+
+        with open(converted_path, "rb") as f:
             result = client.audio.transcriptions.create(
                 model="gpt-4o-mini-transcribe",
                 file=f,
                 language="en"
             )
 
+        print("✅ Transcription complete")
+        cleaned_text = filter(result.text)
         return jsonify({
-            "transcript": result.text,
+            "transcript": cleaned_text,
             "filename": filename,
-            "filepath": filepath
+            "converted_path": converted_path
         }), 200
 
     except Exception as e:
+        print("❌ Exception in /transcribe-upload:")
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
 
 
 @app.route('/health', methods=['GET'])
@@ -399,3 +472,33 @@ if __name__ == '__main__':
     # Ensure upload folder exists
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     app.run(debug=True, host='0.0.0.0', port=5001)
+
+# @app.route('/explain', methods=['POST'])
+# def explain():
+#     """
+#     Explain a single biological term.
+#     Input: {"term": "INS"}
+#     Output: {"term": "INS", "summary": "...", "sourceName": "...", "url": null}
+#     """
+#     try:
+#         data = request.get_json()
+#         term = data.get('term')
+
+#         if not term or not isinstance(term, str):
+#             return jsonify({"error": "'term' must be a string"}), 400
+
+#         # 调用已有的 explain_terms()，只解释一个词
+#         result = explain_terms([term])
+#         explanation = result.get(term, "No explanation available.")
+
+#         return jsonify({
+#             "term": term,
+#             "summary": explanation,
+#             "sourceName": "Claude 3.5 Sonnet",
+#             "url": None
+#         }), 200
+
+#     except Exception as e:
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({"error": str(e)}), 500
